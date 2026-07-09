@@ -38,6 +38,34 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tensorflow as tf
 from tensorflow import keras
 
+# ==============================================================================
+# 🛠️ PATCH DE DÉSÉRIALISATION DYNAMIQUE POUR 'preprocess_input'
+# ==============================================================================
+_original_load_model = keras.models.load_model
+
+def _patched_load_model(filepath, *args, **kwargs):
+    if 'custom_objects' not in kwargs or kwargs['custom_objects'] is None:
+        kwargs['custom_objects'] = {}
+        
+    path_lower = str(filepath).lower()
+    if 'resnet50' in path_lower:
+        from tensorflow.keras.applications.resnet50 import preprocess_input
+        kwargs['custom_objects']['preprocess_input'] = preprocess_input
+    elif 'densenet' in path_lower:
+        from tensorflow.keras.applications.densenet import preprocess_input
+        kwargs['custom_objects']['preprocess_input'] = preprocess_input
+    elif 'mobilenet' in path_lower:
+        from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+        kwargs['custom_objects']['preprocess_input'] = preprocess_input
+    elif 'efficientnet' in path_lower:
+        from tensorflow.keras.applications.efficientnet import preprocess_input
+        kwargs['custom_objects']['preprocess_input'] = preprocess_input
+        
+    return _original_load_model(filepath, *args, **kwargs)
+
+keras.models.load_model = _patched_load_model
+# ==============================================================================
+
 import config
 from utils.data_utils import create_data_generators, load_class_mapping
 from utils.model_utils import load_trained_model
