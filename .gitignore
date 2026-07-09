@@ -1,0 +1,5 @@
+# Ignore the raw image dataset
+data/
+*.keras
+checkpoints/
+models/
