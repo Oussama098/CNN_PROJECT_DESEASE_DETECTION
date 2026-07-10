@@ -260,8 +260,10 @@ def load_trained_model(model_name, checkpoint_type="best"):
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint non trouve : {checkpoint_path}")
 
-    print(f"[INFO] Chargement du modele depuis : {checkpoint_path}")
-    model = keras.models.load_model(checkpoint_path , safe_mode=False)
+    custom_objects = {"preprocess_input": PREPROCESSING_FNS[model_name]}
+    model = keras.models.load_model(
+        checkpoint_path, custom_objects=custom_objects, safe_mode=False
+    )
     print(f"[INFO] Modele charge avec succes")
 
     return model

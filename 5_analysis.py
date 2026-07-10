@@ -56,24 +56,59 @@ sns.set_style("whitegrid")
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
     """
-    Genere une heatmap Grad-CAM pour une image.
+    Genere une heatmap Grad-CAM pour une image en extrayant la couche convolutive
+    depuis le backbone imbrique (ResNet, DenseNet, etc.).
 
     Args:
         img_array: Image sous forme de tableau numpy
-        model: Modele Keras entraine
-        last_conv_layer_name: Nom de la derniere couche convolutive
+        model: Modele Keras entraine (modèle racine complet)
+        last_conv_layer_name: Nom de la derniere couche convolutive interne au backbone
         pred_index: Index de la classe a visualiser (None = classe predite)
 
     Returns:
         Heatmap Grad-CAM
     """
-    # Creer un modele qui mappe l'input a la derniere couche conv + sortie
-    grad_model = keras.models.Model(
-        model.inputs,
-        [model.get_layer(last_conv_layer_name).output, model.output],
+    # 1. Identifier dynamiquement le nom du backbone utilise dans le modele
+    backbone_name = None
+    supported_backbones = ["resnet50", "densenet121", "efficientnetb0", "mobilenetv2"]
+    for layer in model.layers:
+        if layer.name in supported_backbones:
+            backbone_name = layer.name
+            break
+            
+    if not backbone_name:
+        raise ValueError("Impossible de trouver un backbone supporte dans les couches du modele.")
+
+    # 2. Récupérer l'instance du sous-modèle (le backbone)
+    backbone_model = model.get_layer(backbone_name)
+
+    # 3. Créer un sous-modèle intermédiaire pour le backbone qui renvoie 
+    #    à la fois la couche de convolution cible ET la sortie finale du backbone
+    backbone_grad_model = keras.models.Model(
+        inputs=backbone_model.inputs,
+        outputs=[backbone_model.get_layer(last_conv_layer_name).output, backbone_model.output]
     )
 
-    # Calculer le gradient de la classe predite par rapport a la sortie conv
+    # 4. Reconstruire le graphe fonctionnel complet pour l'analyse des gradients
+    img_input = model.inputs[0]
+    x = model.get_layer("model_preprocessing")(img_input)
+    
+    # Passer par le sous-modèle modifié du backbone
+    target_conv_output, backbone_output = backbone_grad_model(x)
+
+    # Passer la sortie du backbone à travers le reste de la tête de classification
+    x = model.get_layer("global_avg_pool")(backbone_output)
+    x = model.get_layer("bn_head")(x)
+    x = model.get_layer("dropout_1")(x)
+    x = model.get_layer("dense_1")(x)
+    x = model.get_layer("bn_dense")(x)
+    x = model.get_layer("dropout_2")(x)
+    outputs = model.get_layer("predictions")(x)
+
+    # 5. Créer le modèle Grad-CAM final unifié
+    grad_model = keras.models.Model(img_input, [target_conv_output, outputs])
+
+    # 6. Calculer le gradient de la classe prédite par rapport à la sortie de la conv cible
     with tf.GradientTape() as tape:
         conv_outputs, predictions = grad_model(img_array)
         if pred_index is None:
