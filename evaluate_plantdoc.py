@@ -110,7 +110,7 @@ def load_plantdoc_images(plantdoc_dir, class_mapping, img_size=224, max_per_clas
     return np.array(images), true_labels, source_classes
 
 
-def evaluate_on_plantdoc(model_name, plantdoc_dir, max_per_class=None):
+def evaluate_on_plantdoc(model_name, plantdoc_dir, max_per_class=None, manual_mapping_path=None):
     print("\n" + "=" * 70)
     print(f"  EVALUATION CROSS-DATASET : {model_name.upper()} sur PlantDoc")
     print("=" * 70)
@@ -130,6 +130,16 @@ def evaluate_on_plantdoc(model_name, plantdoc_dir, max_per_class=None):
 
     # 3. Construire le mapping automatique (a verifier/corriger si besoin)
     class_mapping = build_class_mapping(plantdoc_classes, pv_class_names)
+
+    # 3bis. Appliquer les corrections manuelles si fournies (ecrase le mapping auto)
+    if manual_mapping_path and os.path.exists(manual_mapping_path):
+        with open(manual_mapping_path, "r", encoding="utf-8") as f:
+            manual_overrides = json.load(f)
+        print(f"\n[INFO] Application de {len(manual_overrides)} corrections manuelles depuis {manual_mapping_path}")
+        for pd_class, pv_class in manual_overrides.items():
+            old_value = class_mapping.get(pd_class, "N/A")
+            class_mapping[pd_class] = pv_class
+            print(f"  [CORRIGE] {pd_class:35s} : {old_value} -> {pv_class}")
 
     # 4. Charger les images correspondantes
     print("[INFO] Chargement des images PlantDoc...")
@@ -213,9 +223,12 @@ def main():
     parser.add_argument("--plantdoc-dir", required=True, help="Chemin vers le dossier PlantDoc (train ou test)")
     parser.add_argument("--max-per-class", type=int, default=None,
                          help="Limiter le nombre d'images par classe (utile pour un test rapide)")
+    parser.add_argument("--manual-mapping", type=str, default=None,
+                         help="Chemin vers un JSON de corrections manuelles {plantdoc_class: plantvillage_class} "
+                              "qui ecrase le mapping automatique pour les classes mal appariees")
     args = parser.parse_args()
 
-    result = evaluate_on_plantdoc(args.model, args.plantdoc_dir, args.max_per_class)
+    result = evaluate_on_plantdoc(args.model, args.plantdoc_dir, args.max_per_class, args.manual_mapping)
     print("\n" + "=" * 70)
     print("  EVALUATION TERMINEE")
     print("=" * 70)
